@@ -202,3 +202,43 @@ def rotate(name: str) -> dict:
         dom.undefineFlags(flags)
     virt.define_xml(new_xml)
     return {"name": name, "identity": ident}
+
+
+def delete_vm(name: str, keep_disk: bool = False, force: bool = False) -> dict:
+    from . import rdp
+
+    if not virt.exists(name):
+        raise CloneError(f"VM '{name}' 不存在")
+    if virt.is_running(name):
+        if not force:
+            raise CloneError(f"VM '{name}' 在跑，先关机或加 --force")
+        virt.destroy(name)
+
+    xml = virt.domain_xml(name, migratable=True)
+    disk, _fmt = _disk_info(xml)
+    nvram_m = re.search(r"<nvram\b[^>]*>([^<]+)</nvram>", xml)
+    nvram = nvram_m.group(1) if nvram_m else str(_nvram_dir() / f"{name}_VARS.qcow2")
+    others = virt.all_disk_paths(except_name=name)
+
+    virt.undefine(name, remove_nvram=True)
+    rdp.clear_target(name)
+
+    removed = []
+    skipped = []
+    disk_p = Path(disk)
+    if keep_disk:
+        skipped.append(disk)
+    elif disk in others:
+        skipped.append(f"{disk} (还有别的 VM 在用，含 overlay 底层盘)")
+    elif disk_p.suffix.lower() in {".iso"}:
+        skipped.append(disk)
+    elif disk_p.is_file():
+        disk_p.unlink()
+        removed.append(str(disk_p))
+
+    nvram_p = Path(nvram)
+    if nvram_p.is_file() and str(nvram_p) not in others:
+        nvram_p.unlink()
+        removed.append(str(nvram_p))
+
+    return {"name": name, "removed": removed, "skipped": skipped}

@@ -33,6 +33,15 @@ def save_target(name: str) -> None:
     _target_path().write_text(name + "\n", encoding="utf-8")
 
 
+def clear_target(name: str | None = None) -> None:
+    cur = saved_target()
+    if name and cur != name:
+        return
+    p = _target_path()
+    if p.is_file():
+        p.unlink()
+
+
 def _run(args: list[str]) -> str:
     r = subprocess.run(args, capture_output=True, text=True)
     if r.returncode != 0:

@@ -52,11 +52,10 @@ button:disabled{opacity:.45;cursor:default}
       <select id="src"></select>
       →
       <input id="dst" placeholder="新名字" size="18"/>
-      <label><input type="checkbox" id="overlay"/> overlay</label>
       <label><input type="checkbox" id="startAfter"/> 完后开机</label>
       <button class="pri" id="doClone">Clone</button>
     </p>
-    <div class="note">overlay 是 qcow2 backing，源盘之后不要开机写入。默认稀疏整拷，互相独立。</div>
+    <div class="note">整拷磁盘，源和克隆可同时开。不要 overlay（会锁源盘）。</div>
     <div class="log" id="log"></div>
   </div>
 </main>
@@ -107,6 +106,11 @@ function render(st){
       btn('Destroy', 'bad', () => { if (confirm('强制关机 '+v.name+'?')) post('/api/destroy', {name:v.name}); });
     }
     btn('切 3389', 'pri', () => post('/api/rdp', {name:v.name, start:true}));
+    btn('删除', 'bad', () => {
+      const t = prompt('删除 '+v.name+' 及其磁盘。输入名字确认：');
+      if (t !== v.name) return;
+      post('/api/delete', {name:v.name, force:true});
+    });
     tb.appendChild(tr);
     const o = document.createElement('option');
     o.value = v.name; o.textContent = v.name;
@@ -145,7 +149,7 @@ $('doClone').onclick = async () => {
   try {
     const j = await api('/api/clone', {
       src, dst,
-      overlay: $('overlay').checked,
+      overlay: false,
       start: $('startAfter').checked
     });
     $('log').textContent = 'job '+j.job;

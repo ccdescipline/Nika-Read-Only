@@ -172,3 +172,34 @@ def exists(name: str) -> bool:
 def is_running(name: str) -> bool:
     with connection() as conn:
         return bool(_dom(conn, name).isActive())
+
+
+def undefine(name: str, remove_nvram: bool = True) -> None:
+    with connection() as conn:
+        dom = _dom(conn, name)
+        if dom.isActive():
+            raise VirtError(f"VM '{name}' 还在跑，先 stop/destroy")
+        flags = 0
+        if remove_nvram and hasattr(libvirt, "VIR_DOMAIN_UNDEFINE_NVRAM"):
+            flags |= libvirt.VIR_DOMAIN_UNDEFINE_NVRAM
+        elif hasattr(libvirt, "VIR_DOMAIN_UNDEFINE_KEEP_NVRAM"):
+            flags |= libvirt.VIR_DOMAIN_UNDEFINE_KEEP_NVRAM
+        try:
+            if flags:
+                dom.undefineFlags(flags)
+            else:
+                dom.undefine()
+        except libvirt.libvirtError as e:
+            raise VirtError(f"undefine {name} 失败: {e}") from e
+
+
+def all_disk_paths(except_name: str = "") -> set[str]:
+    out: set[str] = set()
+    with connection() as conn:
+        for dom in conn.listAllDomains(0):
+            if except_name and dom.name() == except_name:
+                continue
+            xml = dom.XMLDesc(0)
+            for m in re.finditer(r"<source file=['\"]([^'\"]+)", xml):
+                out.add(m.group(1))
+    return out

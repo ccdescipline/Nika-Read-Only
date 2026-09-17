@@ -57,6 +57,17 @@ def cmd_destroy(args) -> int:
     return 0
 
 
+def cmd_delete(args) -> int:
+    if not args.yes:
+        ans = input(f"删除 VM '{args.name}' 以及它的磁盘/NVRAM？[y/N] ")
+        if ans.strip().lower() not in ("y", "yes"):
+            print("cancelled")
+            return 0
+    result = clone.delete_vm(args.name, keep_disk=args.keep_disk, force=args.force)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def cmd_rdp(args) -> int:
     if args.hook:
         info = rdp.hook(args.hook)
@@ -128,6 +139,13 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("destroy", help="强制关机")
     s.add_argument("name")
     s.set_defaults(func=cmd_destroy)
+
+    s = sub.add_parser("delete", help="删除 VM（默认连带它自己的盘，不碰别人的底层盘）")
+    s.add_argument("name")
+    s.add_argument("-y", "--yes", action="store_true")
+    s.add_argument("--force", action="store_true", help="在跑就先 destroy")
+    s.add_argument("--keep-disk", action="store_true")
+    s.set_defaults(func=cmd_delete)
 
     s = sub.add_parser("rdp", help="把宿主机 :3389 指到某台 VM")
     s.add_argument("name", nargs="?")

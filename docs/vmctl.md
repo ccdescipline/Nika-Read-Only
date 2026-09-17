@@ -151,7 +151,9 @@ vmctl rdp seekos-ltsc2
 
 只换身份、不拷盘：`vmctl rotate NAME`（也要关机）。
 
-克隆不改 QEMU 二进制。模拟器层指纹所有 VM 仍共享，见身份文档。
+Web 没有 overlay 选项。CLI 仍有 `--overlay`，不要用，除非源盘永远不开。
+
+删除：`vmctl delete NAME -y --force`，或 Web「删除」（要输入名字确认）。只删这台自己的盘/NVRAM，不删别人当 backing 的源盘。
 
 ---
 
@@ -163,7 +165,8 @@ vmctl start NAME
 vmctl stop NAME          # ACPI
 vmctl destroy NAME       # 强制
 vmctl rdp NAME [--start]
-vmctl clone SRC DST [--overlay] [--start]
+vmctl clone SRC DST [--start]
+vmctl delete NAME [-y] [--force]
 vmctl rotate NAME
 vmctl serve              # systemd 已在跑，一般不用手开
 ```

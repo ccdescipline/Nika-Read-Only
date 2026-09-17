@@ -118,6 +118,16 @@ class Handler(BaseHTTPRequestHandler):
                 result = clone.rotate(name)
                 _json(self, 200, result)
                 return
+            if path == "/api/delete":
+                result = clone.delete_vm(
+                    name,
+                    keep_disk=bool(body.get("keep_disk")),
+                    force=bool(body.get("force")),
+                )
+                st = _status()
+                st["ok"] = result
+                _json(self, 200, st)
+                return
         except (virt.VirtError, rdp.RdpError, clone.CloneError) as e:
             _json(self, 400, {"error": str(e)})
             return
