@@ -1,6 +1,7 @@
 # vmctl：虚拟机管理（列表 / 启停 / 克隆 / 3389 切换）
 
 > 2026-09-17 初稿。对照仓库 `vmctl/` + 宿主机 `cclaptop`。
+> 再刷新：2026-09-17 晚（内核试更回滚；现网仍 Jul 13 tkg。见 [`kvm-setup §5.1`](kvm-setup-ubuntu24-from-zero.md#51-2026-09-17-试更官方-intel619mypatch已回滚)）。
 > 总索引：[`README.md`](README.md)。从零搭建 / 直通仍看 [`kvm-setup-ubuntu24-from-zero.md`](kvm-setup-ubuntu24-from-zero.md)。身份分层看 [`qemu-identity-and-rebuild.md`](qemu-identity-and-rebuild.md)。
 >
 > 本文只覆盖 **vmctl** 这一层：不管 QEMU 重编、不管 GPU 直通。现网两台（加克隆）都是模拟 VGA + VNC，卡在宿主机 `nouveau` 上。
@@ -46,6 +47,7 @@
 | Web | http://192.168.4.158:8787/ |
 | systemd | `vmctl.service` enabled + active |
 | Git | origin `https://github.com/ccdescipline/Nika-Read-Only.git` |
+| 内核 | `6.19.14-tkg-eevdf` **Jul 13 15:04 UTC**。9/17 官方 `intel619.mypatch` 会让 Windows 卡在 `bootmgfw.efi`，已回滚，**不要重装客人** |
 
 核对当时 `vmctl list`：
 
@@ -225,3 +227,4 @@ ssh -N -L 5900:127.0.0.1:5900 cc@192.168.4.158
 | 重启后 3389 丢 | `systemctl status vmctl`；hook 在不在；`vmctl rdp --status` 后重切 |
 | Web 打不开 | `systemctl restart vmctl`；端口 8787 |
 | 3390 又出现 | 不要跑旧 `seekos-fwd` 二进制；仓库脚本已改成 vmctl |
+| 开机卡 ROG / `bootmgfw.efi` | 不是克隆坏了。先看宿主机是不是 9/17 那份 intel619 内核；回滚见 kvm-setup §5.1 |

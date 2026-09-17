@@ -4,6 +4,7 @@
 > 再刷新：2026-09-11（脚本改名 `qemupatch.sh` / `ovmfpatch.sh`；当日 incr / `--new-ids` / AHCI XML 见旁文档）。
 > 再刷新：2026-09-14（`net-rotate` 网关 DNS 名；seekos 现网 `192.168.243.0/24` / `miwifi.com`）。
 > 再刷新：2026-09-17（日常 RDP 改走 `vmctl` 切宿主机 `:3389`；`:3390` 已拆。见 [`vmctl.md`](vmctl.md)。总索引 [`README.md`](README.md)）。
+> 再刷新：2026-09-17 晚（官方 `intel619.mypatch` 试更 → Windows 卡在 `bootmgfw.efi` → 已回滚 7 月内核。见下面 §5.1。**不要重装客人**）。
 > 目标：Nika Read Only（Ape-xCV）反检测栈，跑 Windows 10 22H2 + 单卡 GPU 直通。
 > 宿主机：ASUS ROG 笔记本（i7-8750H / GTX 1070 Mobile / 32G / **无 iGPU** / 仅 WiFi `wlo1`）。
 > 这份文档是仓库里**从零搭建 + 显卡直通**总结，坑都是本机踩过的。
@@ -50,7 +51,7 @@
 
 | 项 | 值 |
 |---|---|
-| 宿主机 | `cclaptop` / Ubuntu 24 / `6.19.14-tkg-eevdf` / LAN `192.168.4.158`（WiFi 会漂，曾经是 `.159`） |
+| 宿主机 | `cclaptop` / Ubuntu 24 / `6.19.14-tkg-eevdf` **编于 Jul 13**（9/17 官方 intel619 试更已回滚，见 §5.1） / LAN `192.168.4.158` |
 | QEMU | `/usr/local/bin/qemu-system-x86_64` **11.0.2 (v11.0.2-dirty)**，进程用户 `libvirt-qemu` |
 | OVMF | `/usr/share/edk2/ovmf/OVMF_CODE_4M.patched.qcow2` + `OVMF_VARS_4M.patched.qcow2` |
 | libvirt | 10.0.0，URI 必须 `qemu:///system` |
@@ -232,6 +233,34 @@ sudo reboot
 ```
 
 同版本号会盖掉 `/boot` 里上一份 tkg，grub 里看不到“旧 tkg”。回滚靠上面的 `kernel-bak-*`，所以每次 incr 都会先备份。长编译丢 tmux。
+
+### 5.1 2026-09-17 试更官方 `intel619.mypatch`（已回滚）
+
+上游 9/12–9/16 改了 Intel KVM userpatch：非法 MSR 打 `#GP`，并把 PMC / LBR / DEBUGCTL 重新透给客人。本机是 i7-8750H，`kernelpatch619.sh` 用的就是这份。
+
+实跑：
+
+1. 全量 `kernelpatch619.sh`（`_offline=true` 走本地 `linux-kernel.git`，NJU `ls-remote` 10 秒会超时）。产物仍叫 `6.19.14-tkg-eevdf`。
+2. `dpkg -i` 盖掉 `/boot`。编前备份：`linux-tkg/DEBS.bak-20260917/`（**7 月能开机的包，回滚用这个**）。
+3. 重启后 `seekos-ltsc2` 不是停在 BIOS 菜单：OVMF 已加载 `bootmgfw.efi`，卡在 ROG 开机画面，QEMU 一核 100%。
+4. 同一块盘、同一份 OVMF，装回 `DEBS.bak-20260917` 再重启，立刻进 Windows 锁屏。
+
+结论：
+
+- **跟客人系统脏不脏无关，不要为这事重装 / 新开 VM。**
+- 问题在宿主机新 KVM 补丁和 Windows 启动管理器打架，不是 HWID、不是盘、不是 3389。
+- 现网内核：`#1 SMP PREEMPT_DYNAMIC Mon Jul 13 15:04:01 UTC 2026`。cmdline 仍是 `mitigations=off intel_iommu=on iommu=pt`。
+- 增量脚本 [`kernelpatch-incr.sh`](../kernelpatch-incr.sh) 已加。注意：`kernel-bak-20260917-110350` 是**新内核**装上之后拷的，回滚别用它。
+
+```bash
+# 回滚到 7 月（已做过一次）
+sudo dpkg -i /home/cc/code/Nika-Read-Only/linux-tkg/DEBS.bak-20260917/linux-image-6.19.14-tkg-eevdf_6.19.14-1_amd64.deb \
+             /home/cc/code/Nika-Read-Only/linux-tkg/DEBS.bak-20260917/linux-headers-6.19.14-tkg-eevdf_6.19.14-1_amd64.deb
+sudo reboot
+# 起来看: cat /proc/version   应含 Jul 13
+```
+
+以后上游再改 `intel619.mypatch`：先 incr 编、先用测试域开机看过 `bootmgfw`，再换日常机。
 
 重启后验证：
 
@@ -598,6 +627,7 @@ sudo virsh attach-interface win10-nika network default --model e1000e --mac 目�
 | `virsh list` 永远空，Cockpit 里却在跑 | 连的是 `qemu:///session` | `export LIBVIRT_DEFAULT_URI=qemu:///system` |
 | 局域网连 `宿主机:5900` 失败 | VNC 只绑 `127.0.0.1` | 第 10.1 节 SSH 隧道 |
 | VNC 只有黑屏 / 卡 logo | 独显已接走显示 | 正常，桌面走 RDP |
+| VNC 卡 ROG 开机画面 / `bootmgfw.efi`，QEMU 一核 100% | 9/17 官方 `intel619.mypatch` 和 Windows 启动管理器打架 | 回滚 `linux-tkg/DEBS.bak-20260917`，**不要重装客人**。见 §5.1 |
 | `domdisplay` 显示 `:0` | 那是 VNC 显示号 | TCP 端口是 5900 |
 | `domifaddr` 返回空但 VM 能上网 | XML MAC ≠ Windows 覆盖 MAC | 第 12 节热拔插对齐 |
 | `vm-fwd` 30 秒超时 | 同上 | 同上 |

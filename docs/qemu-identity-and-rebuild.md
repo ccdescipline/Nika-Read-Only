@@ -4,6 +4,7 @@
 > 当日实战：`qemupatch-incr.sh`、`--new-ids`、配套 `ovmfpatch.sh`、seekos-ltsc AHCI XML。
 > 再刷新：2026-09-14（`net-rotate` 加网关 DNS 名；DUID 说明；§9 现网快照）。
 > 再刷新：2026-09-17（日常 RDP 只走宿主机 `:3389`，`vmctl` 切换；`:3390` 已拆。见 [`vmctl.md`](vmctl.md)。总索引 [`README.md`](README.md)）。
+> 再刷新：2026-09-17 晚（官方 `intel619.mypatch` 试更导致 Windows 卡启动管理器，已回滚 7 月内核。见 [`kvm-setup §5.1`](kvm-setup-ubuntu24-from-zero.md#51-2026-09-17-试更官方-intel619mypatch已回滚)）。
 > 从零搭建、直通仍看 [`kvm-setup-ubuntu24-from-zero.md`](kvm-setup-ubuntu24-from-zero.md)。克隆 / 3389：[`vmctl.md`](vmctl.md)。
 > 本文只回答：改 XML 和改 QEMU 不是一回事，以及怎样少花一个小时重编。
 
