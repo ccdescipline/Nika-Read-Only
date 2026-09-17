@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+GUEST="${1:-}"
+PHASE="${2:-}"
+if [[ "$PHASE" == "started" || "$PHASE" == "reconnect" ]]; then
+    /usr/local/bin/vmctl rdp --hook "$GUEST" >/dev/null 2>&1 &
+fi
+exit 0

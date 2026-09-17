@@ -1,0 +1,6 @@
+*.iso
+*.i64
+*.sys
+__pycache__/
+*.pyc
+*.pyo

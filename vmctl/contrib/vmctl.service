@@ -1,0 +1,16 @@
+[Unit]
+Description=vmctl VM manager (list / rdp / clone)
+After=libvirtd.service network-online.target
+Wants=libvirtd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/vmctl serve --bind 0.0.0.0 --port 8787
+Restart=on-failure
+RestartSec=2
+User=root
+Environment=LIBVIRT_DEFAULT_URI=qemu:///system
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

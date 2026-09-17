@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>vmctl</title>
+<style>
+:root { --bg:#0e1116; --fg:#e6edf3; --muted:#8b949e; --line:#21262d; --acc:#3fb950; --warn:#d29922; --bad:#f85149; --btn:#21262d; --btn2:#30363d; }
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 ui-monospace,Consolas,monospace;background:var(--bg);color:var(--fg)}
+header{display:flex;gap:16px;align-items:baseline;padding:14px 20px;border-bottom:1px solid var(--line)}
+header b{color:var(--acc);font-size:16px}
+header .rdp{color:var(--muted)}
+header .rdp em{color:var(--acc);font-style:normal}
+main{padding:16px 20px 40px}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--muted);font-weight:600;font-size:12px}
+tr.active td{background:#122117}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--muted)}
+.dot.on{background:var(--acc)}
+.dot.off{background:#484f58}
+button{font:inherit;color:var(--fg);background:var(--btn);border:1px solid var(--btn2);border-radius:6px;padding:4px 10px;margin:0 4px 0 0;cursor:pointer}
+button:hover{border-color:#8b949e}
+button.pri{background:#1f6feb;border-color:#1f6feb}
+button.bad{color:var(--bad);border-color:#6e3030}
+button:disabled{opacity:.45;cursor:default}
+.err{color:var(--bad);margin:10px 0;min-height:1.2em}
+.row-actions{display:flex;flex-wrap:wrap;gap:4px}
+.clone{margin-top:24px;padding-top:16px;border-top:1px solid var(--line)}
+.clone input,.clone select{font:inherit;color:var(--fg);background:var(--btn);border:1px solid var(--btn2);border-radius:6px;padding:4px 8px}
+.log{margin-top:12px;white-space:pre-wrap;color:var(--muted);max-height:240px;overflow:auto}
+.note{color:var(--muted);font-size:12px;margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <b>vmctl</b>
+  <span class="rdp" id="banner">3389 → …</span>
+</header>
+<main>
+  <div class="err" id="err"></div>
+  <table>
+    <thead>
+      <tr><th>NAME</th><th>STATE</th><th>MEM</th><th>CPU</th><th>IP</th><th>MAC</th><th>NIC</th><th>VNC</th><th></th></tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="clone">
+    <div>克隆（源必须关机；会 rotate UUID/MAC/序列号）</div>
+    <p>
+      <select id="src"></select>
+      →
+      <input id="dst" placeholder="新名字" size="18"/>
+      <label><input type="checkbox" id="overlay"/> overlay</label>
+      <label><input type="checkbox" id="startAfter"/> 完后开机</label>
+      <button class="pri" id="doClone">Clone</button>
+    </p>
+    <div class="note">overlay 是 qcow2 backing，源盘之后不要开机写入。默认稀疏整拷，互相独立。</div>
+    <div class="log" id="log"></div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let pollJob = null;
+function err(m){ $('err').textContent = m || ''; }
+async function api(path, body){
+  const opt = body ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)} : {};
+  const r = await fetch(path, opt);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function render(st){
+  const rdp = st.rdp || {};
+  const tgt = rdp.name || '(none)';
+  let extra = rdp.host ? '  '+rdp.host : '';
+  if (rdp.stale) extra += '  stale '+ (rdp.dnat_ip||'');
+  $('banner').innerHTML = '3389 → <em>'+tgt+'</em>'+extra;
+  const tb = $('rows');
+  tb.innerHTML = '';
+  const src = $('src');
+  const cur = src.value;
+  src.innerHTML = '';
+  (st.vms||[]).forEach(v => {
+    const tr = document.createElement('tr');
+    if (v.rdp) tr.className = 'active';
+    tr.innerHTML = `
+      <td>${v.name}${v.rdp?' *':''}</td>
+      <td><span class="dot ${v.running?'on':'off'}"></span>${v.state}</td>
+      <td>${v.memory}</td>
+      <td>${v.vcpus}</td>
+      <td>${v.ip||'-'}</td>
+      <td>${v.mac||'-'}</td>
+      <td>${v.nic||'-'}</td>
+      <td>${v.vnc||'-'}</td>
+      <td class="row-actions"></td>`;
+    const act = tr.querySelector('.row-actions');
+    const btn = (label, cls, fn) => {
+      const b = document.createElement('button');
+      b.textContent = label; if (cls) b.className = cls;
+      b.onclick = fn; act.appendChild(b);
+    };
+    if (!v.running) btn('Start', '', () => post('/api/start', {name:v.name}));
+    else {
+      btn('Stop', '', () => post('/api/stop', {name:v.name}));
+      btn('Destroy', 'bad', () => { if (confirm('强制关机 '+v.name+'?')) post('/api/destroy', {name:v.name}); });
+    }
+    btn('切 3389', 'pri', () => post('/api/rdp', {name:v.name, start:true}));
+    tb.appendChild(tr);
+    const o = document.createElement('option');
+    o.value = v.name; o.textContent = v.name;
+    src.appendChild(o);
+  });
+  if (cur) src.value = cur;
+}
+async function refresh(){
+  try { render(await api('/api/status')); err(''); }
+  catch(e){ err(e.message); }
+}
+async function post(path, body){
+  err('');
+  try { render(await api(path, body)); }
+  catch(e){ err(e.message); }
+}
+async function watch(id){
+  pollJob = id;
+  const log = $('log');
+  while (pollJob === id){
+    const j = await api('/api/jobs/'+id);
+    log.textContent = (j.log||[]).join('\n') + (j.error ? '\nERROR: '+j.error : '');
+    if (j.status !== 'running'){
+      pollJob = null;
+      await refresh();
+      if (j.status === 'error') err(j.error);
+      return;
+    }
+    await new Promise(r => setTimeout(r, 800));
+  }
+}
+$('doClone').onclick = async () => {
+  const src = $('src').value, dst = $('dst').value.trim();
+  if (!dst){ err('填写新名字'); return; }
+  err('');
+  try {
+    const j = await api('/api/clone', {
+      src, dst,
+      overlay: $('overlay').checked,
+      start: $('startAfter').checked
+    });
+    $('log').textContent = 'job '+j.job;
+    watch(j.job);
+  } catch(e){ err(e.message); }
+};
+refresh();
+setInterval(() => { if (!pollJob) refresh(); }, 3000);
+</script>
+</body>
+</html>
