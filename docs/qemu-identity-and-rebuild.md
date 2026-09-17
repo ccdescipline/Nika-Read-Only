@@ -3,7 +3,8 @@
 > 2026-09-11 对照仓库最新脚本 + 宿主机 `cclaptop:/home/cc/code/Nika-Read-Only`。
 > 当日实战：`qemupatch-incr.sh`、`--new-ids`、配套 `ovmfpatch.sh`、seekos-ltsc AHCI XML。
 > 再刷新：2026-09-14（`net-rotate` 加网关 DNS 名；DUID 说明；§9 现网快照）。
-> 从零搭建、直通、RDP 仍看 [`kvm-setup-ubuntu24-from-zero.md`](kvm-setup-ubuntu24-from-zero.md)。
+> 再刷新：2026-09-17（日常 RDP 只走宿主机 `:3389`，`vmctl` 切换；`:3390` 已拆。见 [`vmctl.md`](vmctl.md)。总索引 [`README.md`](README.md)）。
+> 从零搭建、直通仍看 [`kvm-setup-ubuntu24-from-zero.md`](kvm-setup-ubuntu24-from-zero.md)。克隆 / 3389：[`vmctl.md`](vmctl.md)。
 > 本文只回答：改 XML 和改 QEMU 不是一回事，以及怎样少花一个小时重编。
 
 ---
@@ -27,7 +28,7 @@ XML **覆盖不了** QEMU 源码里写死的字符串和 PCI ID。客人读设�
 sudo virsh shutdown win10-nika
 sudo ./vm-rotate-identity.v2.sh win10-nika
 sudo virsh start win10-nika
-sudo vm-fwd
+vmctl rdp win10-nika --start
 ```
 
 只改：UUID、NIC MAC、磁盘 `<serial>`、SMBIOS type 1/2/3/17 序列号。
@@ -284,7 +285,7 @@ incr / `--new-ids` / AHCI / 黑屏原因见第 7 节，这里只留**现网值**
 | 客人磁盘 | `EMTCE X150 240GB` serial `10QQNE9R9H8O` |
 | NAT | `192.168.200.0/24` 网关 `192.168.200.1` MAC **`38:d5:47:41:65:69`** |
 | VM NIC | `3c:97:0e:ec:5d:b6` e1000e，DHCP **192.168.200.74** |
-| RDP | `192.168.4.158:3390` → 客人 3389 |
+| RDP | 当时 `:3390` → 客人 3389（**9/17 起已拆，改 vmctl 切 `:3389`**） |
 | VNC | SSH 隧道 `127.0.0.1:5900` |
 | 主机名 | 宿主机仍是 `cclaptop`（LLMNR/NetBIOS 可能漏，ARP 里没有） |
 
@@ -328,7 +329,7 @@ Get-WmiObject Win32_VideoController | Select Name, PNPDeviceID
 | NAT | `192.168.243.0/24` 网关 `192.168.243.1` MAC **`64:cc:2e:83:c3:c1`**（小米） |
 | 网关 DNS | `miwifi.com` / `miwifi`，domain `lan` |
 | DHCP | **192.168.243.74** |
-| RDP | `192.168.4.158:3390` → `.74:3389` |
+| RDP | 9/14 曾是 `:3390` → `.74:3389`。**2026-09-17 起 3390 已拆**，改 `vmctl rdp` 切宿主机 `:3389` |
 | VNC | SSH 隧道 `127.0.0.1:5900` |
 | 宿主机名 | 仍是 `cclaptop`（NAT 下客人 DNS 已是 `miwifi.com`，不是它） |
 | 客人主机名 | `WXSG-20260911BA`（装机日，没转） |

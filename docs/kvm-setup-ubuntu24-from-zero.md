@@ -3,10 +3,12 @@
 > 初稿：2026-07-13 ~ 07-26 实际部署。刷新：2026-08-25（对照历史会话 + 当前实机）。
 > 再刷新：2026-09-11（脚本改名 `qemupatch.sh` / `ovmfpatch.sh`；当日 incr / `--new-ids` / AHCI XML 见旁文档）。
 > 再刷新：2026-09-14（`net-rotate` 网关 DNS 名；seekos 现网 `192.168.243.0/24` / `miwifi.com`）。
+> 再刷新：2026-09-17（日常 RDP 改走 `vmctl` 切宿主机 `:3389`；`:3390` 已拆。见 [`vmctl.md`](vmctl.md)。总索引 [`README.md`](README.md)）。
 > 目标：Nika Read Only（Ape-xCV）反检测栈，跑 Windows 10 22H2 + 单卡 GPU 直通。
 > 宿主机：ASUS ROG 笔记本（i7-8750H / GTX 1070 Mobile / 32G / **无 iGPU** / 仅 WiFi `wlo1`）。
 > 这份文档是仓库里**从零搭建 + 显卡直通**总结，坑都是本机踩过的。
 > XML vs 模拟器身份、增量重编：[`qemu-identity-and-rebuild.md`](qemu-identity-and-rebuild.md)。
+> VM 列表 / 克隆 / 3389 切换：[`vmctl.md`](vmctl.md)。
 >
 > **标注约定**：
 > - `[README]` = 官方 README 原有步骤
@@ -39,7 +41,7 @@
 |---|---|---|
 | 管宿主机 | SSH `cc@192.168.4.158:22` 或 Cockpit `:9090` | 别指望笔记本屏幕（卡已经给 VM 了） |
 | 看 OVMF / 安装 / 黑屏抢救 | **SSH 隧道转 VNC** `127.0.0.1:5900` | 不要把 VNC 改成 `0.0.0.0`（没密码） |
-| 用 Windows 桌面 / 打游戏 | **RDP 3389**（`sudo vm-fwd`） | GPU 驱动装完后 VNC 经常只剩黑屏或卡 logo |
+| 用 Windows 桌面 / 打游戏 | **RDP 3389**（`vmctl rdp <名字>`） | GPU 驱动装完后 VNC 经常只剩黑屏或卡 logo |
 | 改 XML / 启停 VM | `virsh -c qemu:///system ...` 或 Cockpit | 裸 `virsh list` 是 session 连接，永远是空的 |
 
 ---
@@ -57,7 +59,7 @@
 | 伪装 | SMBIOS 写成 MSI GE63 Raider 8RF / MS-16P5（和 i7-8750H + 1070 自洽） |
 | 域 | `win10-nika`，8 GiB / 4c8t / q35-11.0 / 盘 `/var/lib/libvirt/images/win10-disk.raw` |
 | 网 | `default` = **`192.168.243.0/24`**（曾 `200` / `76`），桥 MAC **`64:cc:2e:83:c3:c1`**（小米 / `miwifi.com` / domain `lan`）。seekos NIC `rtl8125`，MAC 现 `3c:97:0e:b1:c7:93`。会随 `net-rotate` 变 |
-| 脚本 | `/usr/local/bin/vm-fwd`、`/usr/local/bin/vm-rotate`、`/usr/local/bin/net-rotate`、`/home/cc/seekos-fwd.sh` |
+| 脚本 | **`vmctl`**（列表/启停/克隆/3389）、`/usr/local/bin/vm-rotate`、`/usr/local/bin/net-rotate`。旧 `vm-fwd` / `seekos-fwd` 不要再当日常用 |
 | Cockpit | `*:9090` active |
 | 内核 cmdline | `mitigations=off vfio-pci.ids=10de:1be1,10de:10f0 intel_iommu=on iommu=pt` |
 | kvm.conf | `nested=0`、`ignore_msrs=0`（当前 `N` / `N`） |
@@ -71,7 +73,7 @@
 - VM IP `192.168.76.207`
 - VNC 实际监听 `127.0.0.1:5900`（XML 里写的是 `port='-1' autoport`）
 
-`seekos-ltsc` 现网（2026-09-14，细节见 [`qemu-identity-and-rebuild.md`](qemu-identity-and-rebuild.md) §9）：IP `192.168.243.74`，`rtl8125` MAC `3c:97:0e:b1:c7:93`，网关 `miwifi.com` / `64:cc:2e:83:c3:c1`，RDP `:3390`，VGA PCI `8086:2099`。9/11 快照在同文档 §8。
+`seekos-ltsc` 9/14 快照见 [`qemu-identity-and-rebuild.md`](qemu-identity-and-rebuild.md) §9。**2026-09-17 起** RDP 只走宿主机 `:3389`（`vmctl` 切换，3390 已拆），现网以 [`vmctl.md`](vmctl.md) §2 为准。
 
 ---
 
@@ -615,8 +617,9 @@ virsh domifaddr win10-nika --source lease              # 查 VM IP/MAC
 virsh domiflist win10-nika                             # 网卡 / 当前 MAC
 virsh dumpxml win10-nika | grep -E 'mac address|uuid|hostdev|nvram'
 virsh domdisplay win10-nika                            # VNC 地址（:0 = 5900）
-sudo vm-fwd                                            # 重建 RDP 转发（要 root）
-sudo vm-rotate                                         # 随机化身份（VM 必须关机）
+vmctl list                                             # VM 列表 + 当前 3389 目标
+vmctl rdp NAME                                         # 把宿主机 :3389 指到该 VM（替代 vm-fwd / seekos-fwd）
+sudo vm-rotate                                         # 随机化身份（VM 必须关机；也可用 vmctl rotate）
 sudo iptables -t nat -L PREROUTING -n --line-numbers   # 查 DNAT
 sudo iptables -L LIBVIRT_FWI -n --line-numbers         # 查入向过滤
 lspci -nnk -s 01:00                                    # GPU 是否绑在 vfio-pci
@@ -629,7 +632,7 @@ Windows 侧隧道（VNC）：
 ssh -N -L 5900:127.0.0.1:5900 cc@192.168.4.158
 ```
 
-RDP：先 `sudo vm-fwd`，再连 `192.168.4.158:3389`。Cockpit：`https://192.168.4.158:9090`。
+RDP：`vmctl rdp <名字>`，再连 `192.168.4.158:3389`（不要再记 3390）。Web：`http://192.168.4.158:8787/`。Cockpit：`https://192.168.4.158:9090`。详情 [`vmctl.md`](vmctl.md)。
 
 ## 16. 从零再搭一遍的顺序（对照用）
 
@@ -641,8 +644,8 @@ RDP：先 `sudo vm-fwd`，再连 `192.168.4.158:3389`。Cockpit：`https://192.1
 4. 改 default 网络到 `192.168.76.0/24`（先 destroy 再 edit）
 5. CRLF 洗仓库脚本 → `qemupatch.sh`（改 PCH ID；已有 `qemu/build` 时用 `qemupatch-incr.sh`）→ `ovmfpatch.sh` → `kernelpatch619.sh` 选 Debian
 6. grub：`mitigations=off intel_iommu=on iommu=pt vfio-pci.ids=...` + `update-grub`
-7. **先不要绑卡**：先 define VM、VNC 隧道装 Windows、设密码、开 RDP、`vm-fwd` 通
+7. **先不要绑卡**：先 define VM、VNC 隧道装 Windows、设密码、开 RDP、`vmctl rdp <名字>` 通
 8. 再做第 6 节：initramfs 行内 ids + blacklist nouveau + `update-initramfs -u` + 重启
-9. 确认 `lspci -k` 是 vfio-pci 之后，关机 VM，加 hostdev + qemu:override，开机，立刻 `vm-fwd`
+9. 确认 `lspci -k` 是 vfio-pci 之后，关机 VM，加 hostdev + qemu:override，开机，立刻 `vmctl rdp <名字>`
 10. RDP 进 Windows 装 **Notebooks** 驱动，清 ghost 设备
-11. 以后桌面只走 RDP；VNC 只救 BIOS；身份变化走 `vm-rotate`（关机）+ `vm-fwd` + 网络配置文件改 Private
+11. 以后桌面只走 RDP；VNC 只救 BIOS；身份变化走 `vm-rotate` / `vmctl rotate`（关机）+ `vmctl rdp` + 网络配置文件改 Private
