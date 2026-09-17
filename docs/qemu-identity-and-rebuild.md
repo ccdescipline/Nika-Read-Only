@@ -91,7 +91,9 @@ OVMF 是开机固件（蓝底启动菜单）。`ovmfpatch.sh` 编 `OVMF_CODE_4M.
 
 `qemupatch.sh` 每次 `cp -fr qemubackup/. qemu`（没有 `-p`），源文件时间戳全新，Ninja 当全部变了，再跑一遍 `./configure`。所以即使用过的 `qemu/build` 也接近整编，大约 **1 小时**。
 
-不要改 `qemupatch.sh`。增量用仓库 `qemupatch-incr.sh`：
+内核补丁增量（`intel619.mypatch`）不是这个脚本，见 [`kernelpatch-incr.sh`](../kernelpatch-incr.sh) / [`kvm-setup §5`](kvm-setup-ubuntu24-from-zero.md#5-编译定制内核l3kvm-层反检测readme-73)。
+
+不要改 `qemupatch.sh`。QEMU 增量用仓库 `qemupatch-incr.sh`：
 
 - 只从 `qemubackup` 或 `qemu11backup` 还原**即将被 sed 的文件**
 - 保留 `qemu/build`，跳过 clone / 整树拷贝 / `configure`

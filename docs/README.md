@@ -9,6 +9,7 @@
 | [kvm-setup-ubuntu24-from-zero.md](kvm-setup-ubuntu24-from-zero.md) | Ubuntu 24 从零搭 KVM、VFIO、RDP/VNC、踩坑表 |
 | [qemu-identity-and-rebuild.md](qemu-identity-and-rebuild.md) | XML 身份 vs QEMU 重编、incr / `--new-ids`、net-rotate |
 | [vmctl.md](vmctl.md) | **vmctl**：列表 / 启停 / 克隆+rotate / 宿主机 `:3389` 切换 |
+| [kvm-setup §5](kvm-setup-ubuntu24-from-zero.md#5-编译定制内核l3kvm-层反检测readme-73) | 内核全量 `kernelpatch619.sh` / 增量 `kernelpatch-incr.sh` + `kernel-bak-*` 回滚 |
 | [backups/win10-nika-live-20260825.xml](backups/win10-nika-live-20260825.xml) | win10-nika 早期 live XML 备份（不是现网） |
 
 日常入口：

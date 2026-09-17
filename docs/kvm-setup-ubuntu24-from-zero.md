@@ -220,6 +220,18 @@ sudo sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="
 
 - ⚠️ README 写的是改 `GRUB_CMDLINE_LINUX` + `grub-mkconfig`。Ubuntu 24 用 `GRUB_CMDLINE_LINUX_DEFAULT` + `update-grub` 即可。本机最终 grub 行就是上面这条。
 - ⚠️ `sudo dpkg -i \` 换行粘贴会把路径截断，deb 路径写成**一行**。
+- **增量重编**（已有 `linux-tkg/linux-src-git`、只换 `intel619.mypatch` / `amd619.mypatch`）：不要再跑全量 `kernelpatch619.sh`（`_NUKR` 会拆掉 .o）。用 [`kernelpatch-incr.sh`](../kernelpatch-incr.sh)：先备份 `/boot` + 旧 deb 到 `/home/cc/nika-rebuild/kernel-bak-*`，reverse 旧 userpatch、打新补丁、`make -j bindeb-pkg`，**默认不 dpkg**。
+
+```bash
+sudo -E ./kernelpatch-incr.sh -y              # 备份 + 增量编，停在安装前
+sudo -E ./kernelpatch-incr.sh --install       # 确认后再装
+# 回滚:
+sudo dpkg -i /home/cc/nika-rebuild/kernel-bak-时间戳/debs/linux-image-*.deb \
+             /home/cc/nika-rebuild/kernel-bak-时间戳/debs/linux-headers-*.deb
+sudo reboot
+```
+
+同版本号会盖掉 `/boot` 里上一份 tkg，grub 里看不到“旧 tkg”。回滚靠上面的 `kernel-bak-*`，所以每次 incr 都会先备份。长编译丢 tmux。
 
 重启后验证：
 
