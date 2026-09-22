@@ -267,7 +267,7 @@ DUID 是 Windows 的 DHCPv6 客户端身份证（DUID-LLT）。`ipconfig /all` �
 
 #### 7.5.2 脚本还没跟上的
 
-- VM NIC 现网是 `rtl8125`，脚本仍用 Intel OUI `3c:97:0e` 生成 MAC。Realtek 卡配 Intel MAC，客人 `ipconfig` 一眼能看出来。
+- ~~VM NIC 现网是 `rtl8125`，脚本仍用 Intel OUI `3c:97:0e` 生成 MAC。~~ 已修：`vm-rotate` / `net-rotate` / `vmctl` 都按网卡型号选 OUI（rtl8125 → `00:e0:4c`）。`seekos-ltsc` 现网 MAC 仍是旧的 Intel `3c:97:0e:b1:c7:93`，下次 rotate 才会换成 Realtek。
 - 客人主机名仍是装机日 `WXSG-20260911BA`。
 - `dnsmasq-2.90` 的 CHAOS `version.bind` 还能查到，没藏。
 
@@ -328,7 +328,7 @@ Get-WmiObject Win32_VideoController | Select Name, PNPDeviceID
 |---|---|
 | 内存 | 4G / 8 vCPU（9/12 从 8G 改回） |
 | 网卡 | `rtl8125` `10ec:8125`，Windows：Realtek PCIe 2.5GbE |
-| VM NIC MAC | `3c:97:0e:b1:c7:93`（脚本仍写 Intel OUI，见 §7.5.2） |
+| VM NIC MAC | `3c:97:0e:b1:c7:93`（旧 Intel OUI；脚本已改，下次 rotate 换 Realtek `00:e0:4c`） |
 | NAT | `192.168.243.0/24` 网关 `192.168.243.1` MAC **`64:cc:2e:83:c3:c1`**（小米） |
 | 网关 DNS | `miwifi.com` / `miwifi`，domain `lan` |
 | DHCP | **192.168.243.74** |

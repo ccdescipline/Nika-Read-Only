@@ -56,6 +56,13 @@ button:disabled{opacity:.45;cursor:default}
       <button class="pri" id="doClone">Clone</button>
     </p>
     <div class="note">整拷磁盘，源和克隆可同时开。不要 overlay（会锁源盘）。</div>
+    <div style="margin-top:16px">换网关（改 default 网段 / 网关 MAC / DNS 名，并换这台网卡 MAC）</div>
+    <p>
+      <select id="netVm"></select>
+      <label><input type="checkbox" id="netStart" checked/> 完后开机并切 3389</label>
+      <button id="doNet">换网关</button>
+    </p>
+    <div class="note">网段取 6–249，避开 1–5、76、122。其它虚拟机必须先关机；这台如果在跑会被强制关机。</div>
     <div class="log" id="log"></div>
   </div>
 </main>
@@ -81,6 +88,9 @@ function render(st){
   const src = $('src');
   const cur = src.value;
   src.innerHTML = '';
+  const netVm = $('netVm');
+  const curNet = netVm.value;
+  netVm.innerHTML = '';
   (st.vms||[]).forEach(v => {
     const tr = document.createElement('tr');
     if (v.rdp) tr.className = 'active';
@@ -106,6 +116,7 @@ function render(st){
       btn('Destroy', 'bad', () => { if (confirm('强制关机 '+v.name+'?')) post('/api/destroy', {name:v.name}); });
     }
     btn('切 3389', 'pri', () => post('/api/rdp', {name:v.name, start:true}));
+    btn('随机化', '', () => rotate(v.name));
     btn('删除', 'bad', () => {
       const t = prompt('删除 '+v.name+' 及其磁盘。输入名字确认：');
       if (t !== v.name) return;
@@ -115,8 +126,12 @@ function render(st){
     const o = document.createElement('option');
     o.value = v.name; o.textContent = v.name;
     src.appendChild(o);
+    const o2 = document.createElement('option');
+    o2.value = v.name; o2.textContent = v.name;
+    netVm.appendChild(o2);
   });
   if (cur) src.value = cur;
+  if (curNet) netVm.value = curNet;
 }
 async function refresh(){
   try { render(await api('/api/status')); err(''); }
@@ -142,6 +157,36 @@ async function watch(id){
     await new Promise(r => setTimeout(r, 800));
   }
 }
+async function rotate(name){
+  if (!confirm('随机化 '+name+' 的 UUID / MAC / 序列号？必须先关机。')) return;
+  err('');
+  try {
+    const j = await api('/api/rotate', {name});
+    const id = j.identity || {};
+    $('log').textContent = [
+      name+' 新身份',
+      'uuid='+(id.uuid||''),
+      'mac='+(id.mac||''),
+      'disk='+(id.disk_sn||''),
+      'sys='+(id.sys_sn||''),
+      'board='+(id.board_sn||''),
+      'chassis='+(id.chassis_sn||''),
+      'mem='+(id.mem_sn||'')
+    ].join('\n');
+    await refresh();
+  } catch(e){ err(e.message); }
+}
+$('doNet').onclick = async () => {
+  const name = $('netVm').value;
+  if (!name){ err('没有虚拟机'); return; }
+  if (!confirm('换 '+name+' 的网关？会改所有 VM 共用的 default 网络。其它机器必须已关机；这台如果在跑会被强制关机。')) return;
+  err('');
+  try {
+    const j = await api('/api/net-rotate', {name, start: $('netStart').checked});
+    $('log').textContent = 'job '+j.job;
+    watch(j.job);
+  } catch(e){ err(e.message); }
+};
 $('doClone').onclick = async () => {
   const src = $('src').value, dst = $('dst').value.trim();
   if (!dst){ err('填写新名字'); return; }

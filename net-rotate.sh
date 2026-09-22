@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # net-rotate.sh
-# 换 NAT 网段 192.168.X.0/24、virbr0 网关 MAC、网关 DNS 名（跟 OUI 厂商配对）、
-# VM 网卡 MAC（Intel OUI 3c:97:0e）
+# 换 NAT 网段 192.168.X.0/24（X=6..249，避开 1-5、76、122）、virbr0 网关 MAC、网关 DNS 名（跟 OUI 厂商配对）、
+# VM 网卡 MAC（rtl8125 → Realtek 00:e0:4c，其它 → Intel 3c:97:0e）
 # 不改 UUID / SMBIOS / NVRAM，不改宿主机 hostname（cclaptop）
 # 用法:
 #   sudo ./net-rotate.sh                 # 默认 seekos-ltsc，改完开机并 vmctl rdp
@@ -65,9 +65,9 @@ fi
 pick_octet() {
     local n
     while true; do
-        n=$((RANDOM % 240 + 10))
+        n=$((RANDOM % 244 + 6))
         case "$n" in
-            4|76|122) continue ;;
+            76|122) continue ;;
         esac
         echo "$n"
         return
@@ -94,8 +94,21 @@ pick_gw() {
     NEW_GW_MAC=$(printf '%s:%02x:%02x:%02x' "$GW_OUI" $((RANDOM % 256)) $((RANDOM % 256)) $((RANDOM % 256)))
 }
 
+nic_model_from_xml() {
+    sed -n '/<interface/,/<\/interface>/p' "$1" \
+        | grep -m1 -oE "<model type=['\"][^'\"]+['\"]" \
+        | sed -E "s/.*type=['\"]//;s/['\"]//"
+}
+
+oui_for_model() {
+    case "${1,,}" in
+        rtl8125|rtl8139) printf '%s' '00:e0:4c' ;;
+        *) printf '%s' '3c:97:0e' ;;
+    esac
+}
+
 pick_nic_mac() {
-    printf '3c:97:0e:%02x:%02x:%02x' $((RANDOM % 256)) $((RANDOM % 256)) $((RANDOM % 256))
+    printf '%s:%02x:%02x:%02x' "$(oui_for_model "$(nic_model_from_xml "$1")")" $((RANDOM % 256)) $((RANDOM % 256)) $((RANDOM % 256))
 }
 
 NET_XML=$(mktemp -t net-rotate.XXXXXX.xml)
@@ -130,7 +143,7 @@ NEW_GW="192.168.${OCTET}.1"
 NEW_DHCP_S="192.168.${OCTET}.2"
 NEW_DHCP_E="192.168.${OCTET}.254"
 pick_gw
-NEW_VM_MAC=$(pick_nic_mac)
+NEW_VM_MAC=$(pick_nic_mac "$VM_XML")
 NEW_GW_PRIMARY="${GW_HOSTNAMES%%,*}"
 
 echo "=== 旧 ==="

@@ -354,7 +354,7 @@ sudo mv ~/zh-cn_windows_10_business_editions_version_22h2_xxx.iso /var/lib/libvi
 sudo qemu-img create -f raw /var/lib/libvirt/images/win10-disk.raw 240G
 ```
 
-**生成硬件身份** `[补充]`：UUID 随机、MAC 用 Intel OUI `3c:97:0e:xx:xx:xx`、序列号 12 位大写字母+数字（生成函数见仓库 `vm-rotate-identity.v2.sh`）。这是 XML 层；模拟器层见 [`qemu-identity-and-rebuild.md`](qemu-identity-and-rebuild.md)。
+**生成硬件身份** `[补充]`：UUID 随机、MAC 按网卡型号选 OUI（`rtl8125`/`rtl8139` → Realtek `00:e0:4c`，其它 → Intel `3c:97:0e`）、序列号 12 位大写字母+数字（`vm-rotate-identity.v2.sh` / `vmctl`）。这是 XML 层；模拟器层见 [`qemu-identity-and-rebuild.md`](qemu-identity-and-rebuild.md)。
 
 **域 XML** 从零搭时用仓库 `win10-nika.xml` 当模板（已含踩坑修正）。**现网救域不要用它覆盖 live 身份**，见第 0.1 节。关键点：
 

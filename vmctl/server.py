@@ -5,7 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from . import clone, config, jobs, rdp, virt
+from . import clone, config, jobs, net, rdp, virt
 
 UI = Path(__file__).with_name("ui.html")
 
@@ -118,6 +118,15 @@ class Handler(BaseHTTPRequestHandler):
                 result = clone.rotate(name)
                 _json(self, 200, result)
                 return
+            if path == "/api/net-rotate":
+                job_id = jobs.submit(
+                    "net-rotate",
+                    net.rotate,
+                    name=name,
+                    start=bool(body.get("start", True)),
+                )
+                _json(self, 200, {"job": job_id})
+                return
             if path == "/api/delete":
                 result = clone.delete_vm(
                     name,
@@ -128,7 +137,7 @@ class Handler(BaseHTTPRequestHandler):
                 st["ok"] = result
                 _json(self, 200, st)
                 return
-        except (virt.VirtError, rdp.RdpError, clone.CloneError) as e:
+        except (virt.VirtError, rdp.RdpError, clone.CloneError, net.NetError) as e:
             _json(self, 400, {"error": str(e)})
             return
         except Exception as e:

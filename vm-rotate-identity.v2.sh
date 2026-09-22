@@ -27,7 +27,20 @@ _gen_alnum() {
 }
 gen_serial12() { _gen_alnum 12; }
 gen_serial6()  { _gen_alnum 6; }
-gen_mac()      { printf '3c:97:0e:%02x:%02x:%02x' $((RANDOM%256)) $((RANDOM%256)) $((RANDOM%256)); }
+nic_model_from_xml() {
+    sed -n '/<interface/,/<\/interface>/p' "$1" \
+        | grep -m1 -oE "<model type=['\"][^'\"]+['\"]" \
+        | sed -E "s/.*type=['\"]//;s/['\"]//"
+}
+oui_for_model() {
+    case "${1,,}" in
+        rtl8125|rtl8139) printf '%s' '00:e0:4c' ;;
+        *) printf '%s' '3c:97:0e' ;;
+    esac
+}
+gen_mac() {
+    printf '%s:%02x:%02x:%02x' "$(oui_for_model "$1")" $((RANDOM%256)) $((RANDOM%256)) $((RANDOM%256))
+}
 gen_uuid()     { cat /proc/sys/kernel/random/uuid; }
 
 if ! virsh dominfo "$VM_NAME" >/dev/null 2>&1; then
@@ -45,17 +58,17 @@ fi
 echo "VM '$VM_NAME' state: $STATE"
 echo ""
 
+virsh dumpxml "$VM_NAME" > "$XML_FILE"
+mkdir -p /var/lib/libvirt
+cp "$XML_FILE" "$BACKUP_FILE"
+
 NEW_UUID=$(gen_uuid)
-NEW_MAC=$(gen_mac)
+NEW_MAC=$(gen_mac "$(nic_model_from_xml "$XML_FILE")")
 NEW_DISK_SN=$(gen_serial12)
 NEW_SYS_SN=$(gen_serial12)
 NEW_BOARD_SN=$(gen_serial12)
 NEW_CHASSIS_SN=$(gen_serial12)
 NEW_MEM_SN=$(gen_serial6)
-
-virsh dumpxml "$VM_NAME" > "$XML_FILE"
-mkdir -p /var/lib/libvirt
-cp "$XML_FILE" "$BACKUP_FILE"
 
 echo "=== 旧身份 ==="
 printf "  UUID          = %s\n" "$(grep -oE '<uuid>[^<]+' "$XML_FILE" | head -1 | sed 's/<uuid>//')"
