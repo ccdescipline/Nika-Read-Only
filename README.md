@@ -106,7 +106,7 @@ chmod +x headless.sh
 
 - Use VNC from smartphone, tablet, or laptop to connect.
 
-### 1.1. Install hardware decoder prior to libvirt and Steam
+### 1.1. Install hardware decoder prior to libvirt and Steam (not required, Steam removed)
 
 
 <details>
@@ -121,8 +121,12 @@ chmod +x headless.sh
   <summary>Hardware decoder with <b>AMD</b>:</summary>
 
     sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm
-    sudo dnf swap mesa-va-drivers mesa-va-drivers-freeworld
+    sudo dnf swap mesa-va-drivers mesa-va-drivers-freeworld --allowerasing
 </details>
+
+- If your screen goes black, press `Ctrl+Alt+F3` and use your login:
+  - KDE: sudo systemctl enable plasmalogin && sudo systemctl start plasmalogin
+  - XFCE: sudo systemctl enable lightdm && sudo systemctl start lightdm
 
 
 <details>
@@ -357,7 +361,7 @@ GRUB_CMDLINE_LINUX="mitigations=auto ..."
       <qemu:arg value="-drive"/>
       <qemu:arg value="file=/var/lib/libvirt/images/win10.img,format=raw,cache=none,discard=ignore,if=none,id=drive-sata1-0"/>
       <qemu:arg value="-device"/>
-      <qemu:arg value="ide-hd,bus=device-sata1.0,drive=drive-sata1-0,id=sata1-0,serial=YOUR_SERIAL_HERE"/>
+      <qemu:arg value="ide-hd,bus=device-sata1.0,drive=drive-sata1-0,id=sata1-0,rotation_rate=1,serial=YOUR_SERIAL_HERE"/>
     </qemu:commandline>
   ```
   </details>
@@ -563,18 +567,25 @@ sudo chmod 777 /var/lib/libvirt/images/win10.img
   </cpu>
 ```
 
-- Pin `vcpu` to `cpuset`, example for 12 cores 24 threads (dies=2) host CPU:
+- Pin `vcpu` to `cpuset`, example for 12 cores 24 threads (dies=2) host CPU with **SMT Control Disabled** in host BIOS:
 ```shell
-  <vcpu placement="static">24</vcpu>
+  <vcpu placement="static">12</vcpu>
   <cputune>
     <vcpupin vcpu="0" cpuset="0"/>
     <vcpupin vcpu="1" cpuset="1"/>
-    ...
-    <vcpupin vcpu="22" cpuset="22"/>
-    <vcpupin vcpu="23" cpuset="23"/>
+    <vcpupin vcpu="2" cpuset="2"/>
+    <vcpupin vcpu="3" cpuset="3"/>
+    <vcpupin vcpu="4" cpuset="4"/>
+    <vcpupin vcpu="5" cpuset="5"/>
+    <vcpupin vcpu="6" cpuset="6"/>
+    <vcpupin vcpu="7" cpuset="7"/>
+    <vcpupin vcpu="8" cpuset="8"/>
+    <vcpupin vcpu="9" cpuset="9"/>
+    <vcpupin vcpu="10" cpuset="10"/>
+    <vcpupin vcpu="11" cpuset="11"/>
   </cputune>
   <cpu mode="host-passthrough" check="none" migratable="off">
-    <topology sockets="1" clusters="1" dies="2" cores="6" threads="2"/>
+    <topology sockets="1" clusters="1" dies="2" cores="6" threads="1"/>
     ...
   </cpu>
 ```
