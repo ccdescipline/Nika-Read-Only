@@ -81,6 +81,17 @@ def _ip(dom, conn) -> str:
     return ""
 
 
+def name_by_ip(ip: str) -> str:
+    """按 IPv4 找正在运行的域（DHCP 租约 / MAC 反查）。找不到返回空串。"""
+    if not ip:
+        return ""
+    with connection() as conn:
+        for dom in conn.listAllDomains(libvirt.VIR_CONNECT_LIST_DOMAINS_ACTIVE):
+            if _ip(dom, conn) == ip:
+                return dom.name()
+    return ""
+
+
 def _vnc_port(xml: str) -> str:
     m = re.search(r"<graphics type=['\"]vnc['\"][^>]*port=['\"](-?\d+)['\"]", xml)
     if not m:

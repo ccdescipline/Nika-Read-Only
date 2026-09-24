@@ -63,6 +63,13 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 _json(self, 500, {"error": str(e)})
             return
+        if path == "/api/self":
+            ip = self.client_address[0]
+            try:
+                _json(self, 200, {"ip": ip, "name": virt.name_by_ip(ip)})
+            except Exception as e:
+                _json(self, 500, {"error": str(e)})
+            return
         if path.startswith("/api/jobs/"):
             job = jobs.get(path.rsplit("/", 1)[-1])
             if not job:
@@ -81,6 +88,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         name = (body.get("name") or "").strip()
         try:
+            if path == "/api/self/rotate":
+                # 客人自己发请求：按来源 IP 认出是哪台 → 强制关机 → 随机化 → 开机
+                ip = self.client_address[0]
+                me = virt.name_by_ip(ip)
+                if not me:
+                    _json(self, 404, {"error": f"没有 IP 为 {ip} 的运行中 VM"})
+                    return
+                job_id = jobs.submit("self-rotate", clone.rotate_restart, name=me)
+                _json(self, 200, {"job": job_id, "name": me, "ip": ip})
+                return
             if path == "/api/start":
                 virt.start(name)
                 if rdp.saved_target() == name:

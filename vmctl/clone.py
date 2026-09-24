@@ -5,6 +5,8 @@ import os
 import pwd
 import re
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 from . import config, identity, virt
@@ -202,6 +204,53 @@ def rotate(name: str) -> dict:
         dom.undefineFlags(flags)
     virt.define_xml(new_xml)
     return {"name": name, "identity": ident}
+
+
+_busy_lock = threading.Lock()
+_busy: set[str] = set()
+
+
+def rotate_restart(name: str, delay: float = 1.0, progress=None) -> dict:
+    """强制关机 → 随机化（同 rotate）→ 开机；若是 3389 目标则重绑。"""
+    from . import rdp
+
+    def log(msg: str) -> None:
+        if progress:
+            progress(msg)
+
+    with _busy_lock:
+        if name in _busy:
+            raise CloneError(f"VM '{name}' 已在随机化中")
+        _busy.add(name)
+    try:
+        # 让 HTTP 响应先回到客人手里
+        if delay > 0:
+            time.sleep(delay)
+        log(f"强制关机 {name}")
+        virt.destroy(name)
+        for _ in range(30):
+            if not virt.is_running(name):
+                break
+            time.sleep(0.5)
+        log("随机化 UUID / MAC / 序列号")
+        result = rotate(name)
+        ident = result["identity"]
+        log(f"uuid={ident['uuid']} mac={ident['mac']} disk_sn={ident['disk_sn']}")
+        log(f"启动 {name}")
+        virt.start(name)
+        result["started"] = True
+        if rdp.saved_target() == name:
+            try:
+                ip = rdp.wait_ip(name, timeout=120)
+                info = rdp.apply(name, ip)
+                log(f"3389 → {info['ip']}")
+                result["rdp"] = info
+            except Exception as e:  # 不让 3389 失败拖垮整个任务，hook 还会再试
+                log(f"3389 重绑失败: {e}")
+        return result
+    finally:
+        with _busy_lock:
+            _busy.discard(name)
 
 
 def delete_vm(name: str, keep_disk: bool = False, force: bool = False) -> dict:
