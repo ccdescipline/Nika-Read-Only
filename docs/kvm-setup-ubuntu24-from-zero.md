@@ -48,7 +48,7 @@
 
 ---
 
-## 0.1 当前实机快照（2026-08-25 核对；网络/QEMU 于 2026-09-11 更新；内核 2026-09-23）
+## 0.1 当前实机快照（2026-08-25 核对；网络/QEMU 于 2026-09-11 更新；内核 2026-09-23；**GPU 直通 2026-10-06 重新部署**）
 
 | 项 | 值 |
 |---|---|
@@ -56,13 +56,14 @@
 | QEMU | `/usr/local/bin/qemu-system-x86_64` **11.0.2 (v11.0.2-dirty)**，进程用户 `libvirt-qemu` |
 | OVMF | `/usr/share/edk2/ovmf/OVMF_CODE_4M.patched.qcow2` + `OVMF_VARS_4M.patched.qcow2` |
 | libvirt | 10.0.0，URI 必须 `qemu:///system` |
-| GPU | `01:00.0 10de:1be1` + `01:00.1 10de:10f0`，**真实 SubID `1043:17ee`**，驱动 `vfio-pci` |
+| GPU | `01:00.0 10de:1be1` + `01:00.1 10de:10f0`，**真实 SubID `1043:17ee`**，驱动 `vfio-pci`（2026-10-06 起重新绑 vfio 直通给 `seekos-gpu`，见 §10.2；8/25–10/6 期间曾还给 nouveau） |
 | IOMMU group 1 | `00:01.0` PCIe x16 桥 + GPU + HDMI 音频（没开 ACS，直通照样成） |
 | 伪装 | SMBIOS 写成 MSI GE63 Raider 8RF / MS-16P5（和 i7-8750H + 1070 自洽） |
-| 域 | `win10-nika`，8 GiB / 4c8t / q35-11.0 / 盘 `/var/lib/libvirt/images/win10-disk.raw` |
-| 网 | `default` = **`192.168.243.0/24`**（曾 `200` / `76`），桥 MAC **`64:cc:2e:83:c3:c1`**（小米 / `miwifi.com` / domain `lan`）。seekos NIC `rtl8125`，MAC 现 `3c:97:0e:b1:c7:93`。会随 `net-rotate` 变 |
+| 域 | **`seekos-gpu`**（SeekOS 26.8，8 GiB / 8 vCPU / 盘 `seekos-gpu.raw` 120G / **1070 直通中**，2026-10-06）；`seekos-ltsc`（4 GiB 无直通）；`seekos-ltsc2`（关机备用）。`win10-nika` 已于 8/25 删除 |
+| 网 | `default` = **`192.168.243.0/24`**（曾 `200` / `76`），桥 MAC **`64:cc:2e:83:c3:c1`**（小米 / `miwifi.com` / domain `lan`）。seekos NIC `rtl8125`，MAC 现 ltsc `00:e0:4c:d1:f5:90` / gpu `00:e0:4c:85:d2:bb`。会随 `net-rotate` 变 |
 | 脚本 | **`vmctl`**（列表/启停/克隆/3389）、`/usr/local/bin/vm-rotate`、`/usr/local/bin/net-rotate`。旧 `vm-fwd` / `seekos-fwd` 不要再当日常用 |
 | Cockpit | `*:9090` active |
+| VMI | **memflow-py 已部署**（2026-10-07）：`/home/cc/mfenv` venv + 仓库 `.so` 插件，Python 免内核模块读写客机内存，见 §10.3 |
 | 内核 cmdline | `mitigations=off vfio-pci.ids=10de:1be1,10de:10f0 intel_iommu=on iommu=pt` |
 | kvm.conf | `nested=0`、`ignore_msrs=0`（当前 `N` / `N`） |
 
@@ -92,7 +93,8 @@
 | 3 / 3.1 / 3.2 VFIO 直通 | `[适配]` **大改** | Ubuntu initramfs 不吃 modprobe.d；softdep 拦不住 nouveau；还要骗 SubID |
 | 4 evdev 键鼠直通 | `[跳过]` | 笔记本 + 远程用，桌面走 RDP。XML 里没有 `input-linux` / spice |
 | 7 / 7.1 / 7.3 补丁 QEMU / OVMF / tkg | `[README]` 做了 | 芯片组 ID 改成 Cannon Lake-H |
-| Looking Glass / Sunshine / EDID / memflow | `[跳过]` | `vm-fwd` 里 Sunshine 端口整段注释，以后要再开 |
+| Looking Glass / Sunshine / EDID | `[跳过]` | `vm-fwd` 里 Sunshine 端口整段注释，以后要再开 |
+| memflow | `[另路已做]` | 没走 README 7.2 的 DKMS 内核模块路线；2026-10-07 改用 **memflow-py 免内核模块方案**（pip wheel + qemu 连接器走 `/proc/<pid>/mem`），见 §10.3 |
 | `qemu.conf` `user = "1000"` | `[跳过]` | 当前 QEMU 跑在 `libvirt-qemu`，音频用的 `audiodev none` |
 
 ---
@@ -528,13 +530,19 @@ live QEMU 命令行能看到对应参数才算挂上：
 pnputil /remove-device "PCI\VEN_10DE&DEV_1BE1&SUBSYS_00000000&REV_A1\4&XXXXXXXX&0&0012"
 ```
 
-- ⚠️ dmesg 里可能出现 `vfio-pci: Invalid PCI ROM header signature: expecting 0xaa55, got 0x365a`。本机 **没有因此 Code 43**（KVM hidden + SubID 伪装够用）。真触发了再 dump 真 VBIOS——必须在 **GPU 没进 VM、host 侧还能碰 ROM  sysfs** 时做：
+- ⚠️ dmesg 里可能出现 `vfio-pci: Invalid PCI ROM header signature: expecting 0xaa55, got 0x365a`。本机 **没有因此 Code 43**（KVM hidden + SubID 伪装够用）。真触发 Code 43 就把 dump 的真 VBIOS 喂给 VM——必须在 **GPU 没进 VM、还在 host 手里** 时做。卡已经在 VM 里时去 dump 会失败或 dump 到垃圾。
+
+**✅ 已于 2026-10-06 预防性 dump，文件在宿主机 `/usr/local/share/vbios-1070m.rom`**（516096 字节，md5 `f53a14d276b09599c495bc1517517e88`，内容含 `GP104 E2914 SKU 10 VGA BIOS ASID: N098GM501GS.002` + `Copyright (C) 1996-2017 NVIDIA Corp.` + `ASUS`，确认是本卡真固件）。
+
+⚠️ **2026-10-06 实测：上面这段 sysfs 方法在本机失败了**（`echo 1 > rom` 后 `cat` 报 `Input/output error`，即使 `runtime_status=active` 也一样）。实际成功的是 **nouveau debugfs shadow 副本**方案（nouveau 初始化卡时在内存里留了 VBIOS 影子）：
 
 ```bash
-sudo bash -c 'echo 1 > /sys/bus/pci/devices/0000:01:00.0/rom; cat /sys/bus/pci/devices/0000:01:00.0/rom > /usr/local/share/vbios-1070m.rom; echo 0 > /sys/bus/pci/devices/0000:01:00.0/rom'
+# 前提：GPU 归宿主机 nouveau 驱动（还卡状态）。绑到 vfio-pci 后此路也不通。
+sudo cat /sys/kernel/debug/dri/0/vbios.rom > /usr/local/share/vbios-1070m.rom
+# 验证：头部必须是 55aa；strings 里要有 GP104 / NVIDIA Corp. / ASUS
 ```
 
-然后 XML `<rom bar="on" file="/usr/local/share/vbios-1070m.rom"/>`。卡已经在 VM 里时去 dump 会失败或 dump 到垃圾。
+然后 XML `<rom bar="on" file="/usr/local/share/vbios-1070m.rom"/>`。
 - ⚠️ 直通那一次本机 **host 自己重启过**，RDP 转发全丢。起来先 `sudo vm-fwd`，再谈驱动。
 - README 还写了 NVIDIA 控制面板把 shader cache 调到 10 GiB，属于优化不是直通门槛。
 - `[跳过]` evdev：笔记本没有外接键鼠直通需求，输入走 RDP。
@@ -585,6 +593,107 @@ Cockpit 管 libvirt：浏览器开 `https://192.168.4.158:9090`（证书自签�
 不要把 VNC 改成 `listen=0.0.0.0`。没密码，等于裸奔进局域网。
 
 `virsh domdisplay` 可能打印 `vnc://127.0.0.1:0`（显示号），对应的 TCP 是 5900，不是 0。
+
+### 10.2 2026-10-06 第二次直通：`seekos-gpu`（SeekOS 26.8）`[实战记录]`
+
+背景：8/25 用 `nika-step1-return-gpu.sh` 把卡还给宿主机后，10/6 重新上直通，这次给新 VM `seekos-gpu`（SeekOS 26.8 免激活版，8 GiB / 8 vCPU / `seekos-gpu.raw` 120G 稀疏盘）。
+
+流程完全按 §6（A 段）+ §10（B 段）走，一次通过（含 NVIDIA 驱动，无 Code 43）。与上次的差异和本次新坑：
+
+- **XML 底版换成现役 `seekos-ltsc` live**（hyperv 全开 / rtl8125 / SMBIOS type1 带 uuid 的 9 月新标准），不再用 7 月老模板。直通块（hostdev×2 + override）仍按老模板 `win10-nika-live-before-delete.xml` 抄。
+- **客机槽位镜像物理布局**：hostdev 放 `bus='0x01' slot='0x00' function 0/1`（同一 root-port 多功能），客机里 GPU 就在 `01:00.0/.1` 和真机一致（老模板是 03/04 两根口分开）。
+- **VBIOS 预防性 dump 已做**：sysfs `echo 1 > rom` 方法失败（`Input/output error`），改用 nouveau debugfs shadow 成功，详见 §10.0.1 更新块。文件 `/usr/local/share/vbios-1070m.rom`，本次没用上。
+- ⚠️ **`virsh shutdown` 对免激活版无效**（ACPI 关机信号 120s 无响应），宿主机重启时两台 VM 都被硬切电源。NTFS 日志恢复、chkdsk 自愈，无实际损伤——但下次别干等 shutdown，超时直接 `virsh destroy` 兜底。
+- ⚠️ **宿主机重启后 VNC 端口会挪**：ltsc 关机让出 `127.0.0.1:0`，seekos-gpu 从 `:1` 变 `:0`。开隧道前先 `virsh vncdisplay <名字>` 查实际口。
+- 装驱动前记得设备管理器先确认两个未知 PCI 设备在（01:00.0/.1 就是卡），装标准 NVIDIA Game Ready 包即可。
+
+现场文件（都在 `cclaptop:/home/cc/nika-rebuild/`）：
+
+| 文件 | 内容 |
+|---|---|
+| `seekos-gpu.xml` | 无直通版（装机期 define 源） |
+| `seekos-gpu-with-gpu.xml` | 带直通版（10/6 define 的就是它） |
+| `seekos-gpu.live-20261006.xml` | 直通成功后 live dump 备份 |
+| `return-gpu-seekos-gpu.sh` | **回滚脚本**：从当前 live XML 摘 hostdev（不覆盖身份）+ 剥 vfio + 还 nouveau，**不删盘、不自动 reboot** |
+| `gpu-passthrough-20261006-123248/` | 动手前快照：grub / initramfs modules / modprobe.d 列表 / seekos-ltsc XML |
+
+回滚（一条龙，最后手动 reboot）：
+
+```bash
+sudo bash /home/cc/nika-rebuild/return-gpu-seekos-gpu.sh
+sudo reboot    # 面板恢复画面；lspci -k -s 01:00 应显示 nouveau；seekos-gpu 用模拟 VGA 照常开机
+```
+
+### 10.3 2026-10-07 宿主机免内核模块读写客机内存（memflow-py Python API）`[实战记录]`
+
+目标：Python 可调用的基本 API——遍历进程 / 读进程地址 / 遍历模块基地址 / 读写，物理机侧操作客机内存，**客机内零痕迹**（EAC 不可见），且**不装任何内核模块**（README §7.2 的 memflow-kvm DKMS 路线弃用）。
+
+结论：**全链路跑通**。`pip install memflow`（PyPI 现成 manylinux wheel，零编译零 rust）+ 仓库三件套 `.so` 插件 + root 即可。
+
+```
+宿主机 Python (root, venv=/home/cc/mfenv)
+    │ import memflow          ← PyPI wheel 0.2.0 (cp37-abi3, Py3.12 兼容)
+    │ Inventory("/home/cc/code/Nika-Read-Only")
+    ▼
+libmemflow_win32.so   进程/模块/PML4 虚实翻译（内建偏移, SeekOS 26.8 直接命中）
+libmemflow_qemu.so    QemuProcfs 连接器: 找 qemu 进程→定位 pc.ram 8GiB→/proc/<qemu-pid>/mem 读写
+    ▼
+seekos-gpu 客机内存（客机内无任何组件）
+```
+
+探查阶段实测的三条免内核通道：
+
+| 通道 | 读 | 写 | 速度 | 备注 |
+|---|---|---|---|---|
+| **memflow qemu 连接器** | ✓ | ✓ | 最快（4KB≈1300 读/s） | 生产用；`readonly=False` |
+| QMP `pmemsave` | ✓ | ✗ | ~800MB/s | 校验/兜底。⚠️ `virsh ... --hmp 'pmemsave ...'` 带文件名参数会报 `invalid char 't' in expression`，改发 QMP JSON：`virsh qemu-monitor-command <vm> '{"execute":"pmemsave","arguments":{"val":0,"size":4096,"filename":"/tmp/x.bin"}}'` |
+| HMP `gdbserver`（运行时开关） | ✓ | ✓（虚拟地址） | 慢 | `virsh qemu-monitor-command <vm> --hmp 'gdbserver tcp:127.0.0.1:1234'` 开、`'gdbserver none'` 关，免改 XML |
+| `/proc/<qemu-pid>/mem` 直读 | ✓ | ✓ | dd 实测 119MB/s | qemu 进程 pc.ram 的 HVA 可从 `info ramblock` 直接拿到（当前 `0x7a655fe00000`，随启动变化）；memflow qemu 连接器本质就是这条路 |
+
+部署（一次性，2026-10-07 已做完）：
+
+```bash
+python3 -m venv /home/cc/mfenv
+/home/cc/mfenv/bin/pip install memflow    # manylinux wheel, 不需要 rust/dkms
+# 插件 = 仓库根目录三个 .so（7/13 同批构建；插件 ABI 版本=1 跨小版本稳定, 与 wheel 0.2.0 兼容已实测）
+```
+
+交付文件（仓库根 + `/home/cc/nika-rebuild/` 各一份，md5 双端一致）：
+
+| 文件 | 内容 |
+|---|---|
+| `mf_api.py` | `VmApi` 薄封装：`processes / process(名或pid) / modules / read / read_u32 / read_cstr / write / phys_read / phys_write` |
+| `mf_api_demo.py` | 9 步自测 demo（进程/内核+用户模块/结构体读/三级写/物理层 QMP 交叉校验/吞吐）——**ALL PASS** |
+| `mf_apex_demo.py` | Apex 实战 demo（见下） |
+
+用法（root，宿主机上）：
+
+```python
+/home/cc/mfenv/bin/python
+>>> from mf_api import VmApi
+>>> vm = VmApi()                       # 秒级（首跑除外, 见坑6）
+>>> vm.processes()                     # [(pid, name), ...]  实测 101 个
+>>> p = vm.process("r5apex_dx12.exe")
+>>> vm.modules(p)                      # [(name, base, size), ...]
+>>> vm.read(p, addr, 32)               # bytes
+```
+
+⚠️ **坑（都踩过，按严重程度排）**：
+
+1. **必须 root**：`/proc/<qemu-pid>/mem` 要 ptrace 权限，普通用户连 connector 都建不起来。
+2. **`target=<vm名>` 按名匹配不可用**：qemu 连接器靠宿主机 native 层枚举进程 + 解析 `-name guest=`，但 memflow 0.2 的 native 层 `ProcessInfo.command_line` 是空的 → 按名永远 `TargetNotFound`。**单 VM 免参创建**（`create_connector("qemu", None, None)`，自动匹配第一个 `qemu-system-*` 进程）；多 VM 同跑会抓错，先关别的。
+3. **demand-zero 页首读全零**：客机还没触碰过的页读回来是 0（不报错）。第一次读 Apex 导出目录就栽在这——`NameRva=0` 恰好指到模块 DOS 头，打出 `MZ` 一脸懵。关键结构加「零值重试」（demo 里 5 次×1s），或对照已知魔数。
+4. **写受客机页表写权限约束**：r-x 页按写权限翻译被拒（特性不是 bug）；PE 头标 W 但运行时映射只读的段（Apex 的 `.imrsiv`、`.data` 首页）也拒；`ntoskrnl.exe .data`、Apex `.didat`、物理层写实测 OK。写完复读校验是必须的（demo 的幂等回写模式）。
+5. **Python 绑定大块读慢**：pyo3 逐字节编组，~6MB/s（底层 `/proc` 直读 800MB/s 量级）。小块/结构体读无感；真要大块高速读再优化（c_uint64 数组 / C 层）。
+6. **win32 层首跑可能卡几分钟**：符号下载（msdl 443）超时后回退内建偏移；之后创建 0.1s。SeekOS 26.8 的 ntoskrnl 直接命中内建偏移。
+7. 进程名 15 字符截断（`fontdrvhost.ex`）；`r5apex_dx12.exe` 恰好 15 字符安全。Apex 跑起来后系统里有 3 个 r5apex 进程（2 个无模块表残留），按全名匹配自动选中活实例。
+
+**Apex 实战记录**（`-windowed -w 640 -h 480 +fps_max 10` 测试实例，pid 4264）：
+
+- 主模块 `base=0x7ff658320000`，`size=0xe89f000`（232.6 MiB），9 个段（`.data` 高达 189MB）。
+- 导出表 20 个：`export1` / `export2` / `GetDenuvoTicketLocation` / `GetDenuvoTimeTicketRequest` / FSR2 全家 / `AmdPowerXpressRequestHighPerformance`…
+- **`export1`（ordinal 4）→ `.data+0x16e1970` 存二进制本体；`export2`（ordinal 5）→ `.data+0x16e1d70` 存 u64 长度**。
+- 本次实例：`len=16`，`hex=7eaa3740b5d243009216718c80c95842`，`b64=fqo3QLXSQwCSFnGMgMlYQg==`——运行时随机值（EAC 握手后才写入，与坑 3 的零页现象互证），每次启动不同。
 
 ## 11. 一键身份随机化 `[补充]`
 
