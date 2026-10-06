@@ -82,9 +82,9 @@
 +	cmpw $0x24, %dx                     /* EXIT_REASON_MWAIT (0x24) */
 +	je .Ladvance_rip_and_reenter
 +	cmpw $0x1F, %dx                     /* EXIT_REASON_RDMSR (0x1F) */
-+	je .Lcheck_msr_range
++	je .Lfastpath_slowpath
 +	cmpw $0x20, %dx                     /* EXIT_REASON_WRMSR (0x20) */
-+	je .Lcheck_msr_range
++	je .Lfastpath_slowpath
 +	cmpw $0x0A, %dx                     /* EXIT_REASON_CPUID (0x0A) */
 +	jne .Lfastpath_slowpath
 +
@@ -345,13 +345,13 @@
 -	}
 +//	}  // NIKA removed
 +	// VGK_IA32_PMC0 ... VGK_IA32_PMC7
-+	for (u32 msr = 0xC1; msr <= 0xC8; msr++) vmx_disable_intercept_for_msr(vcpu, msr, MSR_TYPE_RW); //!
++//!	for (u32 msr = 0xC1; msr <= 0xC8; msr++) vmx_disable_intercept_for_msr(vcpu, msr, MSR_TYPE_RW);
 +	// VGK_IA32_PERFEVTSEL0 ... VGK_IA32_PERFEVTSEL7
-+	for (u32 msr = 0x186; msr <= 0x18D; msr++) vmx_disable_intercept_for_msr(vcpu, msr, MSR_TYPE_RW); //!
-+	vmx_disable_intercept_for_msr(vcpu, 0x1C9, MSR_TYPE_RW);  /* VGK_LASTBRANCH_TOS */ //!
-+	vmx_disable_intercept_for_msr(vcpu, 0x1D9, MSR_TYPE_RW);  /* MSR_IA32_DEBUGCTL */ //!
++//!	for (u32 msr = 0x186; msr <= 0x18D; msr++) vmx_disable_intercept_for_msr(vcpu, msr, MSR_TYPE_RW);
++//!	vmx_disable_intercept_for_msr(vcpu, 0x1C9, MSR_TYPE_RW);  /* VGK_LASTBRANCH_TOS */
++//!	vmx_disable_intercept_for_msr(vcpu, 0x1D9, MSR_TYPE_RW);  /* MSR_IA32_DEBUGCTL */
 +	// VGK_LBR_CORE_FROM_0 ... VGK_LBR_CORE_FROM_31
-+	for (u32 msr = 0x680; msr <= 0x69F; msr++) vmx_disable_intercept_for_msr(vcpu, msr, MSR_TYPE_R); //!
++//!	for (u32 msr = 0x680; msr <= 0x69F; msr++) vmx_disable_intercept_for_msr(vcpu, msr, MSR_TYPE_R);
 +	vmx_disable_intercept_for_msr(vcpu, 0xC80, MSR_TYPE_R);  /* MSR_IA32_DEBUG_INTERFACE */
 +	vmx_disable_intercept_for_msr(vcpu, 0xDB2, MSR_TYPE_R);  /* MSR_IA32_THREAD_STALL */
 +/*	vmx_enable_intercept_for_msr(vcpu,   0x1B, MSR_TYPE_R);  // MSR_IA32_APIC_BASE */
@@ -414,12 +414,12 @@
 +	ecx = kvm_rcx_read(vcpu);
 +	in_eax = eax;
 +	in_ecx = ecx;
-+	if (//in_eax == 0x01       ||  // Basic CPU info, feature flags (SSE, AVX, etc.), and processor model/family
++	if (in_eax == 0x01       ||  // Basic CPU info, feature flags (SSE, AVX, etc.), and processor model/family
 +//		in_eax == 0x80000001 ||  // Extended CPU feature flags (64-bit/AMD64, NX bit, etc.)
 +//		in_eax == 0x07       ||  // Structured Extended Feature Flags (AVX2, AVX-512, SHA, etc.)
 +		in_eax == 0x1F       ||  // [Intel] V2 Extended Topology Enumeration (modern x86 CPU core/thread hierarchy)
 +		in_eax == 0x0B       ||  // Extended Topology Enumeration (legacy x86 core/thread hierarchy)
-+//		in_eax == 0x04       ||  // [Intel] Deterministic Cache Parameters (L1/L2/L3 cache sizes, ways, and sharing)
++		in_eax == 0x04       ||  // [Intel] Deterministic Cache Parameters (L1/L2/L3 cache sizes, ways, and sharing)
 +//		in_eax == 0x0D       ||  // Processor Extended State Enumeration (XSAVE / XRSTOR feature state sizes)
 +//		in_eax == 0x0A       ||  // [Intel] Architectural Performance Monitoring (PMU features and counter availability)
 +//		in_eax == 0x14       ||  // [Intel] Intel Processor Trace (Intel PT capabilities and buffer features)
